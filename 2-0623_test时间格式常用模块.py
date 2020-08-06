@@ -1,4 +1,4 @@
-print ("你好")
+print ("你好,2020.08.06")
 import time #引入time模块
 import pdb  #引入断点模块
 #Python 提供了一个 time 和 calendar 模块可以用于格式化日期和时间。
