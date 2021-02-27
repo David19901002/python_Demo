@@ -1,0 +1,125 @@
+/***********************************************************
+增强算法的原理在于先统计每个灰度值在整个图像中所占的比例
+然后以小于当前灰度值的所有灰度值在总像素中所占的比例，作为增益系数
+对每一个像素点进行调整。由于每一个值的增益系数都是小于它的所有值所占
+的比例和。所以就使得经过增强之后的图像亮的更亮，暗的更暗。
+************************************************************/
+void ImageStretchByHistogram(const Mat & src, Mat & dst)
+{
+	//判断传入参数是否正常
+	if (!(src.size().width == dst.size().width))
+	{
+		cout << "error" << endl;
+		return;
+	}
+	double p[256], p1[256], num[256];
+
+	memset(p, 0, sizeof(p));
+	memset(p1, 0, sizeof(p1));
+	memset(num, 0, sizeof(num));
+	int height = src.size().height;
+	int width = src.size().width;
+	long wMulh = height * width;
+
+	//统计每一个灰度值在整个图像中所占个数
+	for (int x = 0; x < width; x++)
+	{
+		for (int y = 0; y < height; y++)
+		{
+			uchar v = src.at<uchar>(y, x);
+			num[v]++;
+		}
+	}
+
+	//使用上一步的统计结果计算每一个灰度值所占总像素的比例
+	for (int i = 0; i < 256; i++)
+	{
+		p[i] = num[i] / wMulh;
+	}
+
+	//计算每一个灰度值，小于当前灰度值的所有灰度值在总像素中所占的比例
+	//p1[i]=sum(p[j]);	j<=i;
+	for (int i = 0; i < 256; i++)
+	{
+		for (int k = 0; k <= i; k++)
+			p1[i] += p[k];
+	}
+
+	//以小于当前灰度值的所有灰度值在总像素中所占的比例，作为增益系数对每一个像素点进行调整。
+	for (int y = 0; y < height; y++)
+	{
+		for (int x = 0; x < width; x++) {
+			uchar v = src.at<uchar>(y, x);
+			dst.at<uchar>(y, x) = p1[v] * 255 + 0.5;
+		}
+	}
+	return;
+}
+
+
+
+//调整图像对比度
+Mat AdjustContrastY(const Mat & img)
+{
+	Mat out = Mat::zeros(img.size(), CV_8UC1);
+	Mat workImg = img.clone();
+
+	//对图像进行对比度增强
+	ImageStretchByHistogram(workImg, out);
+
+	return Mat(out);
+}
+
+//调整图像对比度
+Mat AdjustContrast(const Mat & img)
+{
+	Mat out;
+
+	Mat Y = Mat::zeros(img.size(), CV_8UC1);
+	Mat Cb = Mat::zeros(img.size(), CV_8UC1);
+	Mat Cr = Mat::zeros(img.size(), CV_8UC1);
+	Mat Compile_YCbCr = Mat::zeros(img.size(), CV_8UC3);
+	Mat dst = Mat::zeros(img.size(), CV_8UC1);
+
+	int i;
+	/*******************************************
+	对比度增强算法本质上就是对图像Y分量进行调整。
+	所以需要先把图像数据从BGR转换为YUV，YCrCb就是YUV
+	然后再对YUV数据进行拆分，最后单独对Y分量进行调整。
+	********************************************/
+	cvtColor(img, Compile_YCbCr, cv::COLOR_BGR2YCrCb);
+	//定义一个Mat向量容器保存拆分后的数据
+	vector<Mat> channels;
+	//进行图像通道拆分
+	split(Compile_YCbCr, channels);
+	channels.at(0).copyTo(Y);
+	channels.at(1).copyTo(Cb);
+	channels.at(2).copyTo(Cr);
+	
+	//单独对Y分量进行调整
+	ImageStretchByHistogram(Y, dst);
+
+	//把对比度增强后的Y分量与原来的U、V分量重组为新的图像
+	for (int y = 0; y < img.size().height; y++)
+	{
+		for (int x = 0; x < img.size().width; x++)
+		{
+			//拼接一个像素的三通道
+			Mat cur = Mat::zeros(3, 1, CV_32FC1);
+			cur.at<float>(0, 0) = dst.at<uchar>(y, x);
+			cur.at<float>(1, 0) = Cb.at<uchar>(y, x);
+			cur.at<float>(2, 0) = Cr.at<uchar>(y, x);
+
+			//三通道顺序写入
+			for (i = 0; i < 3; i++)
+			{
+				double xx = cur.at<float>(i, 0);
+				(Compile_YCbCr).at<Vec3b>(y, x)[i] = xx;
+			}
+		}
+	}
+	//把重组之后的图像转换回BGR数据进行返回
+	cvtColor(Compile_YCbCr, out, COLOR_YCrCb2BGR);
+
+	return Mat(out);
+}
